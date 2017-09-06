@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009"
+					   xmlns:s="library://ns.adobe.com/flex/spark"
+					   xmlns:mx="library://ns.adobe.com/flex/mx"
+					   height="450"
+					   width="650"
+					   creationComplete="init()">
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			import mx.utils.OrderedObject;
+
+			private static var FILE_BROWSE:int=0;
+			private static var PROCESS_FILE:int=1;
+
+			private var crlf:String=String.fromCharCode(10);
+			private var months:Array = new Array(12);
+
+			[Bindable]
+			public var count:int;
+
+			private var total:int;
+
+			[Embed(source="images/csv.png")]
+			[Bindable]
+			public var imgCls:Class;
+
+			private var file:File;
+			private var newFile:File;
+
+			private var parser:FollowupParser;
+			
+			private function exitApp():void {
+				this.close();
+			}
+
+			private function init():void {
+				months[0] = "January";
+				months[1] = "February";
+				months[2] = "March";
+				months[3] = "April";
+				months[4] = "May";
+				months[5] = "June";
+				months[6] = "July";
+				months[7] = "August";
+				months[8] = "September";
+				months[9] = "October";
+				months[10] = "November";
+				months[11] = "December";
+				this.parser=new FollowupParser();
+				this.parser.addEventListener(ParseEvent.LINE_PARSED, this.lineParsed);
+				this.parser.addEventListener(ParseEvent.PARSE_ERROR, this.parseError);
+				this.parser.addEventListener(ParseEvent.NOTES, this.addNotes);
+				this.parser.addEventListener(ParseEvent.PARSE_COMPLETE, this.parseComplete);
+				this.addEventListener(NativeDragEvent.NATIVE_DRAG_ENTER, dragEnterHandler);
+				this.addEventListener(NativeDragEvent.NATIVE_DRAG_DROP, dragDropHandler);
+			}
+
+			private function parseError(e:ParseEvent):void {
+				feedback.text=feedback.text + crlf + e.msg;
+			}
+
+			private function parseComplete(e:ParseEvent):void {
+				this.resetbtn.visible=true;
+				this.saveBtn.visible=true;
+				this.bar.label = "Process Complete!"
+			}
+
+			private function reset():void {
+				this.cardStack.selectedIndex=FILE_BROWSE;
+				this.path.text = "";
+			}
+
+			private function addNotes(e:ParseEvent):void {
+				feedback.text=feedback.text + crlf + e.msg;
+			}
+
+			private function lineParsed(e:ParseEvent):void {
+				count++;
+				this.bar.setProgress(count, total);
+			}
+			
+			private function doSave(e:MouseEvent):void {
+				var d:Date = new Date();
+				this.newFile = File.desktopDirectory.resolvePath(months[d.month] + " FollowUp.csv");
+				this.newFile.addEventListener(Event.SELECT, saveNewFile);
+				this.newFile.browseForSave("Choose where to save the new CSV...");
+			}
+			
+			private function saveNewFile(e:Event):void {
+				var stream:FileStream = new FileStream()
+				stream.open(this.newFile, FileMode.WRITE);
+				stream.writeUTFBytes(parser.getNewCSVString());
+				stream.close();
+				Alert.show("The new CSV was saved to: \n\n" + this.newFile.nativePath, "Success");
+			}
+
+			private function dragEnterHandler(evt:NativeDragEvent):void {
+				if (evt.clipboard.hasFormat(ClipboardFormats.FILE_LIST_FORMAT)) {
+					NativeDragManager.acceptDragDrop(this);
+				}
+			}
+
+			private function dragDropHandler(evt:NativeDragEvent):void {
+				NativeDragManager.dropAction=NativeDragActions.COPY;
+				var dropFiles:Array=evt.clipboard.getData(ClipboardFormats.FILE_LIST_FORMAT) as Array;
+				this.file = File(dropFiles[0]);
+				this.path.text=this.file.nativePath;
+			}
+
+			private function processContent(fileContent:String):void {
+				var csvLines:Array=fileContent.split(crlf);
+				this.total=csvLines.length - 1;
+				cardStack.selectedIndex=PROCESS_FILE;
+				this.parser.processArray(csvLines);
+			}
+
+			private function getFileContent(_file:File):String {
+				var fileStream:FileStream=new FileStream();
+				fileStream.open(_file, FileMode.READ);
+				var fileContent:String=fileStream.readUTFBytes(fileStream.bytesAvailable);
+				fileStream.close();
+				return fileContent;
+			}
+
+			private function openFile(e:MouseEvent):void {
+				this.file=new File();
+				this.file.addEventListener(Event.SELECT, selectFile);
+				var txtFilter:FileFilter=new FileFilter("CSV", "*.csv");
+				this.file.browseForOpen("Please select a file...", [txtFilter]);
+			}
+
+			private function selectFile(e:Event):void {
+				path.text=File(e.currentTarget).nativePath;
+			}
+
+			private function processFile(e:MouseEvent):void {
+				if(path.text != "" && path.text.substr(path.text.length - 3, path.text.length) == "csv") {
+					var fileStream:FileStream=new FileStream();
+					fileStream.open(this.file, FileMode.READ);
+					var fileContent:String=fileStream.readUTFBytes(fileStream.bytesAvailable);
+					fileStream.close();
+					this.processContent(fileContent);
+				} else {
+					Alert.show("Either no file was selected or the file is not a CSV.", "Error");
+				}
+
+			}
+		]]>
+	</fx:Script>
+	<mx:ViewStack id="cardStack"
+				  width="100%"
+				  height="100%">
+		<mx:VBox width="100%"
+				 height="100%"
+				 id="stack1"
+				 verticalAlign="top"
+				 paddingTop="10"
+				 horizontalAlign="center">
+			<s:Label text="Followup CSV Editor"
+					 fontFamily="Arial"
+					 fontSize="20"
+					 color="green"/>
+			<s:Spacer height="20"/>
+			<s:HGroup width="100%"
+					  height="100%"
+					  horizontalAlign="center">
+				<s:TextInput id="path"
+							 width="400"/>
+				<s:Button label="Browse"
+						  click="{openFile(event)}"/>
+				<s:Button label="Process"
+						  click="{processFile(event)}"/>
+			</s:HGroup>
+			<s:Image source="{new imgCls()}"
+					 width="256"/>
+		</mx:VBox>
+		<mx:VBox width="100%"
+				 height="100%"
+				 id="stack2"
+				 verticalAlign="top"
+				 paddingTop="10"
+				 horizontalAlign="center">
+			<s:HGroup width="100%"
+					  height="100%"
+					  horizontalAlign="center">
+				<s:Label text="Lines processed: "/>
+				<s:Label text="{count}"/>
+			</s:HGroup>
+			<mx:ProgressBar mode="manual"
+							width="400"
+							height="50"
+							label="Processing..."
+							labelPlacement="center"
+							id="bar"/>
+			<mx:TextArea id="feedback"
+						width="500"
+						valueCommit="feedback.verticalScrollPosition=feedback.maxVerticalScrollPosition" 
+						height="300"/>
+			<s:HGroup width="100%" horizontalAlign="center">
+				<s:Button label="Close"
+						  id="resetbtn"
+						  click="exitApp()"
+						  visible="false"/>
+				<s:Spacer width="50%"/>
+				<s:Button label="Save File"
+						  id="saveBtn"
+						  click="doSave(event)"
+						  visible="false"/>
+			</s:HGroup>
+		</mx:VBox>
+	</mx:ViewStack>
+</s:WindowedApplication>
